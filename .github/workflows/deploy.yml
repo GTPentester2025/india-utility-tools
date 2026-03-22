@@ -1,29 +1,23 @@
-set -euo pipefail
+name: Deploy to VPS
 
-apt-get update -y
-apt-get install -y git rsync
+on:
+  push:
+    branches: [ "main" ]
 
-workdir="/tmp/india-utility-tools-repo"
-rm -rf "$workdir"
-mkdir -p "$workdir"
-chown -R deploy:deploy "$workdir"
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-# trust github host key for deploy user
-sudo -u deploy mkdir -p /home/deploy/.ssh
-sudo -u deploy chmod 700 /home/deploy/.ssh
-sudo -u deploy bash -lc 'ssh-keyscan -H github.com >> /home/deploy/.ssh/known_hosts'
+      - name: Add SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
 
-# clone the repo fresh
-sudo -u deploy bash -lc "cd '$workdir' && git clone git@github.com:GTPentester2025/india-utility-tools.git repo"
-
-# copy the live site into the repo root (but keep .github workflow folder)
-sudo -u deploy bash -lc "rsync -av \
-  --exclude '.git' --exclude '.github' \
-  /var/www/india-utility-tools/ \
-  '$workdir/repo/'"
-
-# commit + push
-sudo -u deploy bash -lc "cd '$workdir/repo' && \
-  git add -A && \
-  git commit -m 'Add site files to repo root' || true && \
-  git push origin main"
+      - name: Deploy via rsync
+        run: |
+          rsync -avz --delete \
+            -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+            ./ deploy@143.110.183.218:/var/www/india-utility-tools/
